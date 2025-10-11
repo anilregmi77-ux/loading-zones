@@ -6,8 +6,9 @@ export default function Home() {
   const [stores, setStores] = useState([]);
   const [storeName, setStoreName] = useState("");
   const [storeAddress, setStoreAddress] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // Load stores from Supabase
+  // Load all stores
   async function loadStores() {
     const { data, error } = await supabase
       .from("stores")
@@ -63,13 +64,30 @@ export default function Home() {
     }
   }
 
+  // Filter stores by search term (case-insensitive)
+  const filteredStores = stores.filter(
+    (s) =>
+      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.address?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="container">
+      {/* Add Store */}
       <div className="card">
-        <h1>🚚 Loading Zone Instructions</h1>
-        <p className="small">Add new store locations and view their notes & photos.</p>
+        <h1>🚚 Invidia Loading Zone Instructions</h1>
+        <p className="small">
+          Add new store locations and view their notes & photos.
+        </p>
 
-        <div style={{ display: "grid", gap: "10px", maxWidth: "500px", marginTop: "16px" }}>
+        <div
+          style={{
+            display: "grid",
+            gap: "10px",
+            maxWidth: "500px",
+            marginTop: "16px",
+          }}
+        >
           <input
             className="input"
             placeholder="Store name"
@@ -82,16 +100,30 @@ export default function Home() {
             value={storeAddress}
             onChange={(e) => setStoreAddress(e.target.value)}
           />
-          <button className="button" onClick={addStore}>Add Store</button>
+          <button className="button" onClick={addStore}>
+            Add Store
+          </button>
         </div>
       </div>
 
+      {/* Search + List */}
       <div className="card" style={{ marginTop: "24px" }}>
         <h2>All Stores</h2>
-        {stores.length === 0 && <p className="small">No stores yet. Add one above!</p>}
+
+        <input
+          className="input"
+          style={{ marginTop: 8, marginBottom: 12 }}
+          placeholder="🔍 Search stores by name or address..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+
+        {filteredStores.length === 0 && (
+          <p className="small">No stores found.</p>
+        )}
 
         <ul className="list">
-          {stores.map((s) => (
+          {filteredStores.map((s) => (
             <li key={s.id}>
               <h3 style={{ margin: "0 0 4px 0" }}>{s.name}</h3>
               <p className="small">{s.address}</p>
@@ -114,3 +146,4 @@ export default function Home() {
     </div>
   );
 }
+
