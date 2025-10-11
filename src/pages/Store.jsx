@@ -4,12 +4,21 @@ import { supabase } from "../supabaseClient";
 
 export default function Store() {
   const { id } = useParams();
+
+  // Store data
   const [store, setStore] = useState(null);
   const [notes, setNotes] = useState("");
+
+  // Edit mode for header (name/address)
+  const [isEditingHeader, setIsEditingHeader] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+
+  // Photos
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
 
-  // ---- Loaders ----
+  // ----- Loaders -----
   async function loadStore() {
     const { data, error } = await supabase
       .from("stores")
@@ -23,6 +32,8 @@ export default function Store() {
     }
     setStore(data);
     setNotes(data.notes || "");
+    setEditName(data.name || "");
+    setEditAddress(data.address || "");
   }
 
   async function loadPhotos() {
@@ -44,7 +55,41 @@ export default function Store() {
     loadPhotos();
   }, [id]);
 
-  // ---- Notes ----
+  // ----- Header edit -----
+  function startHeaderEdit() {
+    setEditName(store?.name || "");
+    setEditAddress(store?.address || "");
+    setIsEditingHeader(true);
+  }
+
+  function cancelHeaderEdit() {
+    setIsEditingHeader(false);
+    setEditName(store?.name || "");
+    setEditAddress(store?.address || "");
+  }
+
+  async function saveHeaderEdit() {
+    const name = editName.trim();
+    const address = editAddress.trim();
+    if (!name) return alert("Store name cannot be empty");
+    try {
+      const { error } = await supabase
+        .from("stores")
+        .update({ name, address })
+        .eq("id", id);
+      if (error) throw error;
+
+      // reflect in UI
+      setStore((prev) => (prev ? { ...prev, name, address } : prev));
+      setIsEditingHeader(false);
+      alert("Store updated");
+    } catch (e) {
+      console.error(e);
+      alert("Update failed");
+    }
+  }
+
+  // ----- Notes -----
   async function saveNotes() {
     const { error } = await supabase.from("stores").update({ notes }).eq("id", id);
     if (error) {
@@ -55,7 +100,7 @@ export default function Store() {
     alert("Notes saved!");
   }
 
-  // ---- Upload helpers ----
+  // ----- Upload helpers -----
   async function handleFile(file) {
     if (!file) return;
     setUploading(true);
@@ -63,7 +108,7 @@ export default function Store() {
       const fileName = `${Date.now()}_${file.name}`;
       const path = `${id}/${fileName}`;
 
-      // Upload file
+      // Upload file to the bucket
       const { error: uploadError } = await supabase.storage
         .from("store-photos")
         .upload(path, file, { cacheControl: "3600", upsert: false });
@@ -75,7 +120,7 @@ export default function Store() {
         .getPublicUrl(path);
       const url = publicUrlData.publicUrl;
 
-      // Save DB row
+      // Insert DB row
       const { error: insertError } = await supabase.from("photos").insert({
         store_id: id,
         url,
@@ -92,15 +137,13 @@ export default function Store() {
     }
   }
 
-  // Input onChange handler
   function onFileInput(e) {
     const f = e.target.files?.[0];
     if (f) handleFile(f);
-    // reset input so same file can be chosen again if needed
-    e.target.value = "";
+    e.target.value = ""; // allow same file re-select
   }
 
-  // ---- Delete photo ----
+  // ----- Delete photo -----
   async function removePhoto(photo) {
     if (!confirm("Delete this photo?")) return;
     try {
@@ -116,33 +159,32 @@ export default function Store() {
         .eq("id", photo.id);
       if (dbErr) throw dbErr;
 
-      setPhotos(prev => prev.filter(p => p.id !== photo.id));
+      setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
     } catch (e) {
       console.error(e);
       alert("Delete failed");
     }
   }
 
-  // ---- Delete store (and files) ----
+  // ----- Delete store -----
   async function deleteThisStore() {
     if (!confirm(`Delete "${store.name}" and all its photos?`)) return;
     try {
-      // Remove all files in this store's folder from Storage
-      // List objects under the folder
+      // Remove files in this store's folder
       const { data: files } = await supabase
         .storage
         .from("store-photos")
         .list(id, { limit: 1000 });
       if (files?.length) {
-        const paths = files.map(f => `${id}/${f.name}`);
+        const paths = files.map((f) => `${id}/${f.name}`);
         await supabase.storage.from("store-photos").remove(paths);
       }
 
-      // Delete the store row (photos table has ON DELETE CASCADE)
+      // Delete the store row (photos rows cascade if FK has ON DELETE CASCADE)
       const { error } = await supabase.from("stores").delete().eq("id", id);
       if (error) throw error;
 
-      // Go home
+      // Back home
       window.location.href = "/";
     } catch (e) {
       console.error(e);
@@ -160,14 +202,41 @@ export default function Store() {
 
   return (
     <div className="container">
-      {/* Header card */}
-      <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <Link to="/" className="small">← Back</Link>
-          <h1 style={{ margin: "6px 0 4px" }}>{store.name}</h1>
-          <div className="small">{store.address}</div>
-        </div>
-        <button className="button danger" onClick={deleteThisStore}>Delete store</button>
+      {/* Header card: view/edit + delete */}
+      <div className="card" style={{ display: "grid", gap: 8 }}>
+        <Link to="/" className="small">← Back</Link>
+
+        {!isEditingHeader ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <div>
+              <h1 style={{ margin: "6px 0 4px" }}>{store.name}</h1>
+              <div className="small">{store.address}</div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="button" onClick={startHeaderEdit}>Edit</button>
+              <button className="button danger" onClick={deleteThisStore}>Delete store</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            <input
+              className="input"
+              placeholder="Store name"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Address"
+              value={editAddress}
+              onChange={(e) => setEditAddress(e.target.value)}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="button" onClick={saveHeaderEdit}>Save</button>
+              <button className="button danger" onClick={cancelHeaderEdit}>Cancel</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Map card */}
@@ -206,7 +275,7 @@ export default function Store() {
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Photos</h2>
 
-        {/* Drag & drop area + input */}
+        {/* Drag & drop area + file input */}
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
