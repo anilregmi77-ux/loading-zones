@@ -22,6 +22,16 @@ export default function Store() {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
+  // ----- Helpers for external map apps -----
+  function placeQuery() {
+    // Prefer address; fallback to store name
+    return encodeURIComponent((store?.address || store?.name || "").trim());
+  }
+  const urlGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${placeQuery()}`;
+  const urlAppleMaps = `https://maps.apple.com/?q=${placeQuery()}`;
+  // Waze universal link (opens app if installed; otherwise web)
+  const urlWaze = `https://waze.com/ul?q=${placeQuery()}&navigate=yes`;
+
   // ----- Loaders -----
   async function loadStore() {
     const { data, error } = await supabase
@@ -57,6 +67,7 @@ export default function Store() {
   useEffect(() => {
     loadStore();
     loadPhotos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   // ----- Header edit -----
@@ -139,19 +150,16 @@ export default function Store() {
       alert("Upload failed");
     } finally {
       setUploading(false);
-      // reset inputs so same file can be chosen again if needed
       if (cameraInputRef.current) cameraInputRef.current.value = "";
       if (galleryInputRef.current) galleryInputRef.current.value = "";
     }
   }
 
   function onCameraChange(e) {
-    const files = e.target.files;
-    handleFiles(files);
+    handleFiles(e.target.files);
   }
   function onGalleryChange(e) {
-    const files = e.target.files;
-    handleFiles(files);
+    handleFiles(e.target.files);
   }
 
   // ----- Delete photo -----
@@ -195,7 +203,6 @@ export default function Store() {
       const { error } = await supabase.from("stores").delete().eq("id", id);
       if (error) throw error;
 
-      // Back home
       window.location.href = "/";
     } catch (e) {
       console.error(e);
@@ -263,6 +270,19 @@ export default function Store() {
             allowFullScreen
             src={`https://www.google.com/maps?q=${encodeURIComponent(store.address || store.name)}&output=embed`}
           />
+        </div>
+
+        {/* NEW: Open in external map apps */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+          <a className="button" href={urlGoogleMaps} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign:"center" }}>
+            Open in Google Maps
+          </a>
+          <a className="button" href={urlAppleMaps} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign:"center" }}>
+            Open in Apple Maps
+          </a>
+          <a className="button" href={urlWaze} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign:"center" }}>
+            Open in Waze
+          </a>
         </div>
       </div>
 
