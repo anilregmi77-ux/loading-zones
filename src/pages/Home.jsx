@@ -1,108 +1,116 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { Link } from "react-router-dom";
 
 export default function Home() {
   const [stores, setStores] = useState([]);
-  const [search, setSearch] = useState("");
-  const [form, setForm] = useState({ name: "", address: "" });
-  const [saving, setSaving] = useState(false);
+  const [storeName, setStoreName] = useState("");
+  const [storeAddress, setStoreAddress] = useState("");
 
+  // Load stores from Supabase
   async function loadStores() {
     const { data, error } = await supabase
       .from("stores")
       .select("*")
       .order("created_at", { ascending: false });
-    if (error) {
-      console.error(error);
-      alert("Could not load stores");
-      return;
-    }
-    setStores(data || []);
+    if (error) console.error(error);
+    else setStores(data || []);
   }
 
   useEffect(() => {
     loadStores();
   }, []);
 
-  const filtered = useMemo(() => {
-    const s = search.toLowerCase();
-    return stores.filter(
-      (x) =>
-        (x.name || "").toLowerCase().includes(s) ||
-        (x.address || "").toLowerCase().includes(s)
-    );
-  }, [stores, search]);
-
-  async function addStore(e) {
-    e.preventDefault();
-    const name = form.name.trim();
-    const address = form.address.trim();
-    if (!name) return alert("Please enter a store name");
-    setSaving(true);
-    const { error } = await supabase
-      .from("stores")
-      .insert({ name, address, notes: "" });
-    setSaving(false);
-    if (error) {
-      console.error(error);
+  // Add store
+  async function addStore() {
+    if (!storeName.trim()) return alert("Please enter a store name");
+    try {
+      const { error } = await supabase
+        .from("stores")
+        .insert([{ name: storeName, address: storeAddress }]);
+      if (error) throw error;
+      setStoreName("");
+      setStoreAddress("");
+      loadStores();
+    } catch (err) {
+      console.error(err);
       alert("Could not save store");
-      return;
     }
-    setForm({ name: "", address: "" });
-    await loadStores();
-    alert("Store added!");
+  }
+
+  // Delete store
+  async function deleteStore(store) {
+    if (!confirm(`Delete store "${store.name}"? This will remove all its photos.`)) return;
+    try {
+      // Remove all photos from storage
+      const { data: files } = await supabase.storage
+        .from("store-photos")
+        .list(store.id);
+      if (files?.length) {
+        const paths = files.map((f) => `${store.id}/${f.name}`);
+        await supabase.storage.from("store-photos").remove(paths);
+      }
+
+      // Delete store row
+      const { error } = await supabase.from("stores").delete().eq("id", store.id);
+      if (error) throw error;
+
+      alert("Store deleted");
+      loadStores();
+    } catch (err) {
+      console.error(err);
+      alert("Delete failed");
+    }
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: "20px auto", padding: 12 }}>
-      <h1>Loading Zone Instructions</h1>
+    <div className="container">
+      <div className="card">
+        <h1>🚚 Loading Zone Instructions</h1>
+        <p className="small">Add new store locations and view their notes & photos.</p>
 
-      <input
-        placeholder="Search by name or address"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ width: "100%", padding: 12, margin: "12px 0" }}
-      />
+        <div style={{ display: "grid", gap: "10px", maxWidth: "500px", marginTop: "16px" }}>
+          <input
+            className="input"
+            placeholder="Store name"
+            value={storeName}
+            onChange={(e) => setStoreName(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="Address"
+            value={storeAddress}
+            onChange={(e) => setStoreAddress(e.target.value)}
+          />
+          <button className="button" onClick={addStore}>Add Store</button>
+        </div>
+      </div>
 
-      <h2>Add a store</h2>
-      <form onSubmit={addStore} style={{ display: "grid", gap: 8 }}>
-        <input
-          placeholder="Store name"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          style={{ padding: 10 }}
-        />
-        <input
-          placeholder="Store address"
-          value={form.address}
-          onChange={(e) => setForm({ ...form, address: e.target.value })}
-          style={{ padding: 10 }}
-        />
-        <button disabled={saving} style={{ padding: 10 }}>
-          {saving ? "Saving…" : "Save store"}
-        </button>
-      </form>
+      <div className="card" style={{ marginTop: "24px" }}>
+        <h2>All Stores</h2>
+        {stores.length === 0 && <p className="small">No stores yet. Add one above!</p>}
 
-      <h2 style={{ marginTop: 24 }}>All stores</h2>
-      {filtered.length === 0 && <p>No stores yet. Add one above!</p>}
-      <ul style={{ listStyle: "none", padding: 0 }}>
-        {filtered.map((s) => (
-          <li
-            key={s.id}
-            style={{
-              border: "1px solid #ddd",
-              borderRadius: 8,
-              padding: 12,
-              margin: "8px 0",
-            }}
-          >
-            <div style={{ fontWeight: "bold" }}>{s.name || "(no name)"}</div>
-            <div style={{ color: "#555" }}>{s.address}</div>
-            <Link to={`/store/${s.id}`}>Open instructions →</Link>
-          </li>
-        ))}
-      </ul>
+        <ul className="list">
+          {stores.map((s) => (
+            <li key={s.id}>
+              <h3 style={{ margin: "0 0 4px 0" }}>{s.name}</h3>
+              <p className="small">{s.address}</p>
+              <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                <Link to={`/store/${s.id}`} className="button" style={{ flex: 1 }}>
+                  Open
+                </Link>
+                <button
+                  onClick={() => deleteStore(s)}
+                  className="button danger"
+                  style={{ flex: 1 }}
+                >
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
