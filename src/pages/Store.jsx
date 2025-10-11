@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 
@@ -9,7 +9,7 @@ export default function Store() {
   const [store, setStore] = useState(null);
   const [notes, setNotes] = useState("");
 
-  // Edit mode for header (name/address)
+  // Header edit mode
   const [isEditingHeader, setIsEditingHeader] = useState(false);
   const [editName, setEditName] = useState("");
   const [editAddress, setEditAddress] = useState("");
@@ -17,6 +17,10 @@ export default function Store() {
   // Photos
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
+
+  // File inputs (camera vs gallery)
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
 
   // ----- Loaders -----
   async function loadStore() {
@@ -79,7 +83,6 @@ export default function Store() {
         .eq("id", id);
       if (error) throw error;
 
-      // reflect in UI
       setStore((prev) => (prev ? { ...prev, name, address } : prev));
       setIsEditingHeader(false);
       alert("Store updated");
@@ -101,32 +104,34 @@ export default function Store() {
   }
 
   // ----- Upload helpers -----
-  async function handleFile(file) {
-    if (!file) return;
+  async function handleFiles(fileList) {
+    if (!fileList || fileList.length === 0) return;
     setUploading(true);
     try {
-      const fileName = `${Date.now()}_${file.name}`;
-      const path = `${id}/${fileName}`;
+      for (const file of fileList) {
+        const fileName = `${Date.now()}_${file.name}`;
+        const path = `${id}/${fileName}`;
 
-      // Upload file to the bucket
-      const { error: uploadError } = await supabase.storage
-        .from("store-photos")
-        .upload(path, file, { cacheControl: "3600", upsert: false });
-      if (uploadError) throw uploadError;
+        // Upload to Storage
+        const { error: uploadError } = await supabase.storage
+          .from("store-photos")
+          .upload(path, file, { cacheControl: "3600", upsert: false });
+        if (uploadError) throw uploadError;
 
-      // Get public URL
-      const { data: publicUrlData } = supabase.storage
-        .from("store-photos")
-        .getPublicUrl(path);
-      const url = publicUrlData.publicUrl;
+        // Public URL
+        const { data: publicUrlData } = supabase.storage
+          .from("store-photos")
+          .getPublicUrl(path);
+        const url = publicUrlData.publicUrl;
 
-      // Insert DB row
-      const { error: insertError } = await supabase.from("photos").insert({
-        store_id: id,
-        url,
-        storage_path: path,
-      });
-      if (insertError) throw insertError;
+        // Save DB row
+        const { error: insertError } = await supabase.from("photos").insert({
+          store_id: id,
+          url,
+          storage_path: path,
+        });
+        if (insertError) throw insertError;
+      }
 
       await loadPhotos();
     } catch (err) {
@@ -134,13 +139,19 @@ export default function Store() {
       alert("Upload failed");
     } finally {
       setUploading(false);
+      // reset inputs so same file can be chosen again if needed
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+      if (galleryInputRef.current) galleryInputRef.current.value = "";
     }
   }
 
-  function onFileInput(e) {
-    const f = e.target.files?.[0];
-    if (f) handleFile(f);
-    e.target.value = ""; // allow same file re-select
+  function onCameraChange(e) {
+    const files = e.target.files;
+    handleFiles(files);
+  }
+  function onGalleryChange(e) {
+    const files = e.target.files;
+    handleFiles(files);
   }
 
   // ----- Delete photo -----
@@ -180,7 +191,7 @@ export default function Store() {
         await supabase.storage.from("store-photos").remove(paths);
       }
 
-      // Delete the store row (photos rows cascade if FK has ON DELETE CASCADE)
+      // Delete store row
       const { error } = await supabase.from("stores").delete().eq("id", id);
       if (error) throw error;
 
@@ -275,37 +286,45 @@ export default function Store() {
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Photos</h2>
 
-        {/* Drag & drop area + file input */}
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            const f = e.dataTransfer.files?.[0];
-            if (f) handleFile(f);
-          }}
-          style={{
-            border: "2px dashed var(--border)",
-            borderRadius: 12,
-            padding: 16,
-            textAlign: "center",
-            background: "#0f1626",
-            marginTop: 8,
-          }}
-        >
-          <div className="small">Drag & drop a photo here</div>
-          <div style={{ marginTop: 8 }}>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"   // opens phone camera
-              onChange={onFileInput}
-              disabled={uploading}
-              className="input"
-              style={{ width: "100%" }}
-            />
-          </div>
-          {uploading && <p className="small" style={{ marginTop: 8 }}>Uploading… please wait</p>}
+        {/* Mobile-friendly upload controls */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          <button
+            className="button"
+            onClick={() => cameraInputRef.current?.click()}
+            style={{ flex: 1 }}
+          >
+            📷 Take Photo
+          </button>
+          <button
+            className="button"
+            onClick={() => galleryInputRef.current?.click()}
+            style={{ flex: 1 }}
+          >
+            🖼️ Choose from Gallery
+          </button>
         </div>
+
+        {/* Hidden file inputs (camera vs gallery) */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"   // opens phone camera
+          onChange={onCameraChange}
+          disabled={uploading}
+          style={{ display: "none" }}
+        />
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          multiple              // allow multiple from gallery
+          onChange={onGalleryChange}
+          disabled={uploading}
+          style={{ display: "none" }}
+        />
+
+        {uploading && <p className="small" style={{ marginTop: 8 }}>Uploading… please wait</p>}
 
         {/* Photo grid */}
         <div className="grid" style={{ marginTop: 12 }}>
