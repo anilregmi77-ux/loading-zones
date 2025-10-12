@@ -7,19 +7,22 @@ export default function Home() {
   const [storeName, setStoreName] = useState("");
   const [storeAddress, setStoreAddress] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // inline edit
+  // inline edit state
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editAddress, setEditAddress] = useState("");
 
   async function loadStores() {
+    setLoading(true);
     const { data, error } = await supabase
       .from("stores")
       .select("*")
       .order("created_at", { ascending: false });
-    if (error) console.error(error);
+    if (error) console.error("loadStores:", error);
     setStores(data || []);
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -29,40 +32,19 @@ export default function Home() {
   async function addStore() {
     const name = storeName.trim();
     const address = storeAddress.trim();
-    if (!name) return alert("Please enter a store name");
-    try {
-      const { error } = await supabase
-        .from("stores")
-        .insert([{ name, address }]);
-      if (error) throw error;
-      setStoreName("");
-      setStoreAddress("");
-      loadStores();
-    } catch (e) {
-      console.error(e);
-      alert("Could not save store");
+    if (!name) return alert("Enter a store name");
+    const { data, error } = await supabase
+      .from("stores")
+      .insert([{ name, address }])
+      .select()
+      .single(); // returns row (including id)
+    if (error) {
+      console.error("addStore:", error);
+      return alert("Could not save store");
     }
-  }
-
-  async function deleteStore(store) {
-    if (!confirm(`Delete "${store.name}" and its photos?`)) return;
-    try {
-      // remove files in bucket folder <store.id>/*
-      const { data: files } = await supabase
-        .storage
-        .from("store-photos")
-        .list(store.id, { limit: 1000 });
-      if (files?.length) {
-        const paths = files.map((f) => `${store.id}/${f.name}`);
-        await supabase.storage.from("store-photos").remove(paths);
-      }
-      const { error } = await supabase.from("stores").delete().eq("id", store.id);
-      if (error) throw error;
-      loadStores();
-    } catch (e) {
-      console.error(e);
-      alert("Delete failed");
-    }
+    setStoreName("");
+    setStoreAddress("");
+    setStores((prev) => [data, ...prev]);
   }
 
   function startEdit(s) {
@@ -79,37 +61,44 @@ export default function Home() {
     const name = editName.trim();
     const address = editAddress.trim();
     if (!name) return alert("Store name cannot be empty");
+    const { error } = await supabase.from("stores").update({ name, address }).eq("id", id);
+    if (error) {
+      console.error("saveEdit:", error);
+      return alert("Update failed");
+    }
+    setStores((prev) => prev.map((s) => (s.id === id ? { ...s, name, address } : s)));
+    cancelEdit();
+  }
+
+  async function deleteStore(s) {
+    if (!confirm(`Delete "${s.name}" and its photos?`)) return;
     try {
-      const { error } = await supabase
-        .from("stores")
-        .update({ name, address })
-        .eq("id", id);
+      const { data: files } = await supabase.storage.from("store-photos").list(s.id, { limit: 1000 });
+      if (files?.length) {
+        const paths = files.map((f) => `${s.id}/${f.name}`);
+        await supabase.storage.from("store-photos").remove(paths);
+      }
+      const { error } = await supabase.from("stores").delete().eq("id", s.id);
       if (error) throw error;
-      setEditingId(null);
-      setEditName("");
-      setEditAddress("");
-      loadStores();
+      setStores((prev) => prev.filter((x) => x.id !== s.id));
     } catch (e) {
-      console.error(e);
-      alert("Update failed");
+      console.error("deleteStore:", e);
+      alert("Delete failed");
     }
   }
 
-  const filteredStores = stores.filter((s) => {
+  const filtered = stores.filter((s) => {
     const t = searchTerm.toLowerCase();
-    return (
-      s.name?.toLowerCase().includes(t) ||
-      (s.address || "").toLowerCase().includes(t)
-    );
+    return s.name?.toLowerCase().includes(t) || (s.address || "").toLowerCase().includes(t);
   });
 
   return (
     <div className="container">
+      {/* Add store */}
       <div className="card">
         <h1>🚚 Driver Loading Zones</h1>
-        <p className="small">Add stores, then open a store to manage notes and photos.</p>
-
-        <div style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 16 }}>
+        <p className="small">Add a store, then open it to manage notes & photos.</p>
+        <div style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 12 }}>
           <input
             className="input"
             placeholder="Store name"
@@ -126,20 +115,21 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 24 }}>
+      {/* List */}
+      <div className="card" style={{ marginTop: 20 }}>
         <h2>All Stores</h2>
         <input
           className="input"
+          placeholder="Search by name or address…"
           style={{ marginTop: 8, marginBottom: 12, maxWidth: 520 }}
-          placeholder="🔍 Search by name or address…"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
-
-        {filteredStores.length === 0 && <p className="small">No stores found.</p>}
+        {loading && <p className="small">Loading…</p>}
+        {filtered.length === 0 && !loading && <p className="small">No stores found.</p>}
 
         <ul className="list">
-          {filteredStores.map((s) => (
+          {filtered.map((s) => (
             <li key={s.id}>
               {editingId === s.id ? (
                 <>
@@ -158,12 +148,8 @@ export default function Home() {
                     style={{ marginBottom: 8 }}
                   />
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button className="button" onClick={() => saveEdit(s.id)} style={{ flex: 1 }}>
-                      Save
-                    </button>
-                    <button className="button danger" onClick={cancelEdit} style={{ flex: 1 }}>
-                      Cancel
-                    </button>
+                    <button className="button" onClick={() => saveEdit(s.id)} style={{ flex: 1 }}>Save</button>
+                    <button className="button danger" onClick={cancelEdit} style={{ flex: 1 }}>Cancel</button>
                   </div>
                 </>
               ) : (
@@ -171,15 +157,9 @@ export default function Home() {
                   <h3 style={{ margin: "0 0 4px 0" }}>{s.name}</h3>
                   <p className="small" style={{ marginBottom: 8 }}>{s.address}</p>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <Link to={`/store/${s.id}`} className="button" style={{ flex: 1, textAlign: "center" }}>
-                      Open
-                    </Link>
-                    <button className="button" onClick={() => startEdit(s)} style={{ flex: 1 }}>
-                      Edit
-                    </button>
-                    <button className="button danger" onClick={() => deleteStore(s)} style={{ flex: 1 }}>
-                      Delete
-                    </button>
+                    <Link to={`/store/${s.id}`} className="button" style={{ flex: 1, textAlign: "center" }}>Open</Link>
+                    <button className="button" onClick={() => startEdit(s)} style={{ flex: 1 }}>Edit</button>
+                    <button className="button danger" onClick={() => deleteStore(s)} style={{ flex: 1 }}>Delete</button>
                   </div>
                 </>
               )}

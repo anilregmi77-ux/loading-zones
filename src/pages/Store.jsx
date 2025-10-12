@@ -17,7 +17,9 @@ export default function Store() {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
-  // Map app links
+  // Full-screen viewer state
+  const [fullScreenPhoto, setFullScreenPhoto] = useState(null);
+
   function placeQuery() {
     return encodeURIComponent((store?.address || store?.name || "").trim());
   }
@@ -25,13 +27,8 @@ export default function Store() {
   const urlAppleMaps = `https://maps.apple.com/?q=${placeQuery()}`;
   const urlWaze = `https://waze.com/ul?q=${placeQuery()}&navigate=yes`;
 
-  // Loaders
   async function loadStore() {
-    const { data, error } = await supabase
-      .from("stores")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const { data, error } = await supabase.from("stores").select("*").eq("id", id).single();
     if (error) {
       console.error(error);
       alert("Could not load store");
@@ -62,26 +59,24 @@ export default function Store() {
     loadPhotos();
   }, [id]);
 
-  // Header edit
   function startHeaderEdit() {
     setEditName(store?.name || "");
     setEditAddress(store?.address || "");
     setIsEditingHeader(true);
   }
+
   function cancelHeaderEdit() {
     setIsEditingHeader(false);
     setEditName(store?.name || "");
     setEditAddress(store?.address || "");
   }
+
   async function saveHeaderEdit() {
     const name = editName.trim();
     const address = editAddress.trim();
     if (!name) return alert("Store name cannot be empty");
     try {
-      const { error } = await supabase
-        .from("stores")
-        .update({ name, address })
-        .eq("id", id);
+      const { error } = await supabase.from("stores").update({ name, address }).eq("id", id);
       if (error) throw error;
 
       setStore((prev) => (prev ? { ...prev, name, address } : prev));
@@ -93,7 +88,6 @@ export default function Store() {
     }
   }
 
-  // Notes
   async function saveNotes() {
     const { error } = await supabase.from("stores").update({ notes }).eq("id", id);
     if (error) {
@@ -104,7 +98,6 @@ export default function Store() {
     alert("Notes saved!");
   }
 
-  // Uploads
   async function handleFiles(fileList) {
     if (!fileList || fileList.length === 0) return;
     setUploading(true);
@@ -112,22 +105,17 @@ export default function Store() {
       for (const file of fileList) {
         const fileName = `${Date.now()}_${file.name}`;
         const path = `${id}/${fileName}`;
-
         const { error: uploadError } = await supabase.storage
           .from("store-photos")
           .upload(path, file, { cacheControl: "3600", upsert: false });
         if (uploadError) throw uploadError;
 
-        const { data: publicUrlData } = supabase.storage
-          .from("store-photos")
-          .getPublicUrl(path);
+        const { data: publicUrlData } = supabase.storage.from("store-photos").getPublicUrl(path);
         const url = publicUrlData.publicUrl;
 
-        const { error: insertError } = await supabase.from("photos").insert({
-          store_id: id,
-          url,
-          storage_path: path,
-        });
+        const { error: insertError } = await supabase
+          .from("photos")
+          .insert({ store_id: id, url, storage_path: path });
         if (insertError) throw insertError;
       }
       await loadPhotos();
@@ -140,23 +128,24 @@ export default function Store() {
       if (galleryInputRef.current) galleryInputRef.current.value = "";
     }
   }
-  function onCameraChange(e) { handleFiles(e.target.files); }
-  function onGalleryChange(e) { handleFiles(e.target.files); }
 
-  // Delete photo
+  function onCameraChange(e) {
+    handleFiles(e.target.files);
+  }
+
+  function onGalleryChange(e) {
+    handleFiles(e.target.files);
+  }
+
   async function removePhoto(photo) {
     if (!confirm("Delete this photo?")) return;
     try {
-      const { error: storageErr } = await supabase
-        .storage
+      const { error: storageErr } = await supabase.storage
         .from("store-photos")
         .remove([photo.storage_path]);
       if (storageErr) throw storageErr;
 
-      const { error: dbErr } = await supabase
-        .from("photos")
-        .delete()
-        .eq("id", photo.id);
+      const { error: dbErr } = await supabase.from("photos").delete().eq("id", photo.id);
       if (dbErr) throw dbErr;
 
       setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
@@ -166,14 +155,10 @@ export default function Store() {
     }
   }
 
-  // Delete store
   async function deleteThisStore() {
     if (!confirm(`Delete "${store.name}" and all its photos?`)) return;
     try {
-      const { data: files } = await supabase
-        .storage
-        .from("store-photos")
-        .list(id, { limit: 1000 });
+      const { data: files } = await supabase.storage.from("store-photos").list(id, { limit: 1000 });
       if (files?.length) {
         const paths = files.map((f) => `${id}/${f.name}`);
         await supabase.storage.from("store-photos").remove(paths);
@@ -197,10 +182,9 @@ export default function Store() {
 
   return (
     <div className="container">
-      {/* Header card */}
+      {/* Header */}
       <div className="card" style={{ display: "grid", gap: 8 }}>
         <Link to="/" className="small">← Back</Link>
-
         {!isEditingHeader ? (
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
             <div>
@@ -214,18 +198,8 @@ export default function Store() {
           </div>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
-            <input
-              className="input"
-              placeholder="Store name"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-            />
-            <input
-              className="input"
-              placeholder="Address"
-              value={editAddress}
-              onChange={(e) => setEditAddress(e.target.value)}
-            />
+            <input className="input" placeholder="Store name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            <input className="input" placeholder="Address" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} />
             <div style={{ display: "flex", gap: 8 }}>
               <button className="button" onClick={saveHeaderEdit}>Save</button>
               <button className="button danger" onClick={cancelHeaderEdit}>Cancel</button>
@@ -234,101 +208,56 @@ export default function Store() {
         )}
       </div>
 
-      {/* Map + open in apps */}
+      {/* Map */}
       <div className="card" style={{ marginTop: 16 }}>
         <div className="small" style={{ marginBottom: 8 }}>Map</div>
-        <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
-          <iframe
-            title="map"
-            width="100%"
-            height="260"
-            style={{ border: 0 }}
-            loading="lazy"
-            allowFullScreen
-            src={`https://www.google.com/maps?q=${encodeURIComponent(store.address || store.name)}&output=embed`}
-          />
-        </div>
+        <iframe
+          title="map"
+          width="100%"
+          height="260"
+          style={{ border: 0 }}
+          loading="lazy"
+          allowFullScreen
+          src={`https://www.google.com/maps?q=${encodeURIComponent(store.address || store.name)}&output=embed`}
+        />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-          <a className="button" href={urlGoogleMaps} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign:"center" }}>
-            Open in Google Maps
-          </a>
-          <a className="button" href={urlAppleMaps} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign:"center" }}>
-            Open in Apple Maps
-          </a>
-          <a className="button" href={urlWaze} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign:"center" }}>
-            Open in Waze
-          </a>
+          <a className="button" href={urlGoogleMaps} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center" }}>Open in Google Maps</a>
+          <a className="button" href={urlAppleMaps} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center" }}>Open in Apple Maps</a>
+          <a className="button" href={urlWaze} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center" }}>Open in Waze</a>
         </div>
       </div>
 
       {/* Notes */}
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Notes</h2>
-        <textarea
-          className="input"
-          rows={6}
-          placeholder="Write loading zone instructions here…"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          style={{ width: "100%", marginTop: 8 }}
-        />
-        <button className="button" onClick={saveNotes} style={{ marginTop: 10 }}>
-          Save notes
-        </button>
+        <textarea className="input" rows={6} placeholder="Write loading zone instructions here…" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%", marginTop: 8 }} />
+        <button className="button" onClick={saveNotes} style={{ marginTop: 10 }}>Save notes</button>
       </div>
 
       {/* Photos */}
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Photos</h2>
-
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-          <button
-            className="button"
-            onClick={() => cameraInputRef.current?.click()}
-            style={{ flex: 1 }}
-          >
-            📷 Take Photo
-          </button>
-          <button
-            className="button"
-            onClick={() => galleryInputRef.current?.click()}
-            style={{ flex: 1 }}
-          >
-            🖼️ Choose from Gallery
-          </button>
+          <button className="button" onClick={() => cameraInputRef.current?.click()} style={{ flex: 1 }}>📷 Take Photo</button>
+          <button className="button" onClick={() => galleryInputRef.current?.click()} style={{ flex: 1 }}>🖼️ Choose from Gallery</button>
         </div>
 
-        {/* hidden inputs */}
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={onCameraChange}
-          disabled={uploading}
-          style={{ display: "none" }}
-        />
-        <input
-          ref={galleryInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={onGalleryChange}
-          disabled={uploading}
-          style={{ display: "none" }}
-        />
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={onCameraChange} disabled={uploading} style={{ display: "none" }} />
+        <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={onGalleryChange} disabled={uploading} style={{ display: "none" }} />
 
         {uploading && <p className="small" style={{ marginTop: 8 }}>Uploading… please wait</p>}
 
         <div className="grid" style={{ marginTop: 12 }}>
           {photos.map((p) => (
             <div key={p.id} className="card" style={{ padding: 8 }}>
-              <img src={p.url} alt="Store" className="img" />
-              <button
-                onClick={() => removePhoto(p)}
-                className="button danger"
-                style={{ marginTop: 8, width: "100%" }}
-              >
+              <img
+                src={p.url}
+                alt="Store"
+                className="img"
+                style={{ cursor: "pointer", borderRadius: "8px" }}
+                onClick={() => setFullScreenPhoto(p.url)}
+              />
+              <button onClick={() => removePhoto(p)} className="button danger" style={{ marginTop: 8, width: "100%" }}>
                 Delete
               </button>
             </div>
@@ -336,6 +265,33 @@ export default function Store() {
           {photos.length === 0 && <p className="small">No photos yet — add one above.</p>}
         </div>
       </div>
+
+      {/* Full-screen photo viewer */}
+      {fullScreenPhoto && (
+        <div
+          onClick={() => setFullScreenPhoto(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.95)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 2000,
+          }}
+        >
+          <img
+            src={fullScreenPhoto}
+            alt="Fullscreen"
+            style={{
+              maxWidth: "90%",
+              maxHeight: "90%",
+              objectFit: "contain",
+              borderRadius: "12px",
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
