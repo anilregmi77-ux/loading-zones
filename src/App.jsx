@@ -14,27 +14,45 @@ export default function App() {
           backgroundColor: "#0b1220",
           color: "#fff",
           fontFamily: "system-ui, sans-serif",
+          position: "relative",
+          paddingBottom: "70px", // space for sticky footer
         }}
       >
-        <main style={{ flex: "1", padding: "16px", maxWidth: "800px", margin: "0 auto" }}>
+        {/* Main content */}
+        <main
+          style={{
+            flex: "1",
+            padding: "20px",
+            maxWidth: "900px",
+            margin: "0 auto",
+            width: "100%",
+          }}
+        >
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/store/:id" element={<Store />} />
           </Routes>
         </main>
 
-        {/* Footer credit */}
+        {/* Sticky footer */}
         <footer
           style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            width: "100%",
             textAlign: "center",
-            color: "#999",
-            fontSize: "0.9rem",
-            padding: "20px",
-            borderTop: "1px solid #222",
-            backgroundColor: "#0b1220",
+            backgroundColor: "#1e2a44",
+            color: "#fff",
+            fontSize: "1rem",
+            padding: "15px 10px",
+            borderTop: "2px solid #4da3ff",
+            zIndex: 1000,
+            boxShadow: "0 -2px 10px rgba(0,0,0,0.5)",
           }}
         >
-          © {new Date().getFullYear()} Made by <strong>Anil Regmi</strong>
+          © {new Date().getFullYear()} Made by{" "}
+          <strong style={{ color: "#4da3ff" }}>Anil Regmi</strong>
         </footer>
       </div>
     </Router>
