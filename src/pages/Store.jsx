@@ -5,34 +5,27 @@ import { supabase } from "../supabaseClient";
 export default function Store() {
   const { id } = useParams();
 
-  // Store data
   const [store, setStore] = useState(null);
   const [notes, setNotes] = useState("");
-
-  // Header edit mode
   const [isEditingHeader, setIsEditingHeader] = useState(false);
   const [editName, setEditName] = useState("");
   const [editAddress, setEditAddress] = useState("");
 
-  // Photos
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
 
-  // File inputs (camera vs gallery)
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
-  // ----- Helpers for external map apps -----
+  // Map app links
   function placeQuery() {
-    // Prefer address; fallback to store name
     return encodeURIComponent((store?.address || store?.name || "").trim());
   }
   const urlGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${placeQuery()}`;
   const urlAppleMaps = `https://maps.apple.com/?q=${placeQuery()}`;
-  // Waze universal link (opens app if installed; otherwise web)
   const urlWaze = `https://waze.com/ul?q=${placeQuery()}&navigate=yes`;
 
-  // ----- Loaders -----
+  // Loaders
   async function loadStore() {
     const { data, error } = await supabase
       .from("stores")
@@ -67,22 +60,19 @@ export default function Store() {
   useEffect(() => {
     loadStore();
     loadPhotos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  // ----- Header edit -----
+  // Header edit
   function startHeaderEdit() {
     setEditName(store?.name || "");
     setEditAddress(store?.address || "");
     setIsEditingHeader(true);
   }
-
   function cancelHeaderEdit() {
     setIsEditingHeader(false);
     setEditName(store?.name || "");
     setEditAddress(store?.address || "");
   }
-
   async function saveHeaderEdit() {
     const name = editName.trim();
     const address = editAddress.trim();
@@ -103,7 +93,7 @@ export default function Store() {
     }
   }
 
-  // ----- Notes -----
+  // Notes
   async function saveNotes() {
     const { error } = await supabase.from("stores").update({ notes }).eq("id", id);
     if (error) {
@@ -114,7 +104,7 @@ export default function Store() {
     alert("Notes saved!");
   }
 
-  // ----- Upload helpers -----
+  // Uploads
   async function handleFiles(fileList) {
     if (!fileList || fileList.length === 0) return;
     setUploading(true);
@@ -123,19 +113,16 @@ export default function Store() {
         const fileName = `${Date.now()}_${file.name}`;
         const path = `${id}/${fileName}`;
 
-        // Upload to Storage
         const { error: uploadError } = await supabase.storage
           .from("store-photos")
           .upload(path, file, { cacheControl: "3600", upsert: false });
         if (uploadError) throw uploadError;
 
-        // Public URL
         const { data: publicUrlData } = supabase.storage
           .from("store-photos")
           .getPublicUrl(path);
         const url = publicUrlData.publicUrl;
 
-        // Save DB row
         const { error: insertError } = await supabase.from("photos").insert({
           store_id: id,
           url,
@@ -143,7 +130,6 @@ export default function Store() {
         });
         if (insertError) throw insertError;
       }
-
       await loadPhotos();
     } catch (err) {
       console.error(err);
@@ -154,15 +140,10 @@ export default function Store() {
       if (galleryInputRef.current) galleryInputRef.current.value = "";
     }
   }
+  function onCameraChange(e) { handleFiles(e.target.files); }
+  function onGalleryChange(e) { handleFiles(e.target.files); }
 
-  function onCameraChange(e) {
-    handleFiles(e.target.files);
-  }
-  function onGalleryChange(e) {
-    handleFiles(e.target.files);
-  }
-
-  // ----- Delete photo -----
+  // Delete photo
   async function removePhoto(photo) {
     if (!confirm("Delete this photo?")) return;
     try {
@@ -185,11 +166,10 @@ export default function Store() {
     }
   }
 
-  // ----- Delete store -----
+  // Delete store
   async function deleteThisStore() {
     if (!confirm(`Delete "${store.name}" and all its photos?`)) return;
     try {
-      // Remove files in this store's folder
       const { data: files } = await supabase
         .storage
         .from("store-photos")
@@ -198,11 +178,8 @@ export default function Store() {
         const paths = files.map((f) => `${id}/${f.name}`);
         await supabase.storage.from("store-photos").remove(paths);
       }
-
-      // Delete store row
       const { error } = await supabase.from("stores").delete().eq("id", id);
       if (error) throw error;
-
       window.location.href = "/";
     } catch (e) {
       console.error(e);
@@ -220,7 +197,7 @@ export default function Store() {
 
   return (
     <div className="container">
-      {/* Header card: view/edit + delete */}
+      {/* Header card */}
       <div className="card" style={{ display: "grid", gap: 8 }}>
         <Link to="/" className="small">← Back</Link>
 
@@ -257,7 +234,7 @@ export default function Store() {
         )}
       </div>
 
-      {/* Map card */}
+      {/* Map + open in apps */}
       <div className="card" style={{ marginTop: 16 }}>
         <div className="small" style={{ marginBottom: 8 }}>Map</div>
         <div style={{ border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
@@ -271,8 +248,6 @@ export default function Store() {
             src={`https://www.google.com/maps?q=${encodeURIComponent(store.address || store.name)}&output=embed`}
           />
         </div>
-
-        {/* NEW: Open in external map apps */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
           <a className="button" href={urlGoogleMaps} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign:"center" }}>
             Open in Google Maps
@@ -286,7 +261,7 @@ export default function Store() {
         </div>
       </div>
 
-      {/* Notes card */}
+      {/* Notes */}
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Notes</h2>
         <textarea
@@ -302,11 +277,10 @@ export default function Store() {
         </button>
       </div>
 
-      {/* Photos card */}
+      {/* Photos */}
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Photos</h2>
 
-        {/* Mobile-friendly upload controls */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
           <button
             className="button"
@@ -324,12 +298,12 @@ export default function Store() {
           </button>
         </div>
 
-        {/* Hidden file inputs (camera vs gallery) */}
+        {/* hidden inputs */}
         <input
           ref={cameraInputRef}
           type="file"
           accept="image/*"
-          capture="environment"   // opens phone camera
+          capture="environment"
           onChange={onCameraChange}
           disabled={uploading}
           style={{ display: "none" }}
@@ -338,7 +312,7 @@ export default function Store() {
           ref={galleryInputRef}
           type="file"
           accept="image/*"
-          multiple              // allow multiple from gallery
+          multiple
           onChange={onGalleryChange}
           disabled={uploading}
           style={{ display: "none" }}
@@ -346,7 +320,6 @@ export default function Store() {
 
         {uploading && <p className="small" style={{ marginTop: 8 }}>Uploading… please wait</p>}
 
-        {/* Photo grid */}
         <div className="grid" style={{ marginTop: 12 }}>
           {photos.map((p) => (
             <div key={p.id} className="card" style={{ padding: 8 }}>
