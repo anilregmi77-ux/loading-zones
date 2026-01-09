@@ -96,7 +96,7 @@ export default function Home() {
     <div className="container">
       {/* Add store */}
       <div className="card">
-        <h1>🚚 Invidia Driver's Loading Zones jjj</h1>
+        <h1>🚚 Invidia Driver's Loading Zones </h1>
         <p className="small">Add a store, then open it to manage notes & photos.</p>
         <div style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 12 }}>
           <input
