@@ -3,16 +3,18 @@ import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 
 export default function Home() {
-  // ===============================
-  // PERMANENT UTE REGOS
-  // ===============================
+  // =====================================
+  // PERMANENT UTE REGOS (EDIT ANYTIME)
+  // Leave blanks to add more later
+  // =====================================
   const UTE_REGOS = [
     "10S2DO",
     "EAE07D",
-    "", // add more here
-    "", // add more here
+    "", // add more regos here
+    "", // add more regos here
+    "", // add more regos here
   ];
-  // ===============================
+  // =====================================
 
   const [stores, setStores] = useState([]);
   const [storeName, setStoreName] = useState("");
@@ -20,16 +22,19 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // inline edit state
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editAddress, setEditAddress] = useState("");
 
   async function loadStores() {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("stores")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (error) console.error("loadStores:", error);
     setStores(data || []);
     setLoading(false);
   }
@@ -39,19 +44,24 @@ export default function Home() {
   }, []);
 
   async function addStore() {
-    if (!storeName.trim()) return alert("Enter store name");
+    const name = storeName.trim();
+    const address = storeAddress.trim();
+    if (!name) return alert("Enter a store name");
 
     const { data, error } = await supabase
       .from("stores")
-      .insert([{ name: storeName.trim(), address: storeAddress.trim() }])
+      .insert([{ name, address }])
       .select()
       .single();
 
-    if (error) return alert("Could not save store");
+    if (error) {
+      console.error("addStore:", error);
+      return alert("Could not save store");
+    }
 
-    setStores((prev) => [data, ...prev]);
     setStoreName("");
     setStoreAddress("");
+    setStores((prev) => [data, ...prev]);
   }
 
   function startEdit(s) {
@@ -62,28 +72,52 @@ export default function Home() {
 
   function cancelEdit() {
     setEditingId(null);
+    setEditName("");
+    setEditAddress("");
   }
 
   async function saveEdit(id) {
+    const name = editName.trim();
+    const address = editAddress.trim();
+    if (!name) return alert("Store name cannot be empty");
+
     const { error } = await supabase
       .from("stores")
-      .update({ name: editName, address: editAddress })
+      .update({ name, address })
       .eq("id", id);
 
-    if (error) return alert("Update failed");
+    if (error) {
+      console.error("saveEdit:", error);
+      return alert("Update failed");
+    }
 
     setStores((prev) =>
-      prev.map((s) =>
-        s.id === id ? { ...s, name: editName, address: editAddress } : s
-      )
+      prev.map((s) => (s.id === id ? { ...s, name, address } : s))
     );
     cancelEdit();
   }
 
   async function deleteStore(s) {
-    if (!confirm(`Delete "${s.name}"?`)) return;
-    await supabase.from("stores").delete().eq("id", s.id);
-    setStores((prev) => prev.filter((x) => x.id !== s.id));
+    if (!confirm(`Delete "${s.name}" and its photos?`)) return;
+
+    try {
+      const { data: files } = await supabase.storage
+        .from("store-photos")
+        .list(s.id, { limit: 1000 });
+
+      if (files?.length) {
+        const paths = files.map((f) => `${s.id}/${f.name}`);
+        await supabase.storage.from("store-photos").remove(paths);
+      }
+
+      const { error } = await supabase.from("stores").delete().eq("id", s.id);
+      if (error) throw error;
+
+      setStores((prev) => prev.filter((x) => x.id !== s.id));
+    } catch (e) {
+      console.error("deleteStore:", e);
+      alert("Delete failed");
+    }
   }
 
   const filtered = stores.filter((s) => {
@@ -94,132 +128,139 @@ export default function Home() {
     );
   });
 
+  const regosToShow = UTE_REGOS.filter((r) => (r || "").trim().length > 0);
+
   return (
     <div className="container">
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 120px", // 👈 MUCH CLOSER
-          gap: 8,
-          alignItems: "start",
-        }}
-      >
-        {/* LEFT – MAIN CONTENT */}
-        <div>
-          <div className="card">
-            <h1>🚚 Invidia's Driver Loading Zones</h1>
-            <p className="small">
+      {/* Add store */}
+      <div className="card">
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h1 style={{ marginTop: 0 }}>🚚 Invidia's Driver Loading Zones</h1>
+            <p className="small" style={{ marginTop: 6 }}>
               Add a store, then open it to manage notes & photos.
             </p>
-
-            <div style={{ display: "grid", gap: 10, maxWidth: 520 }}>
-              <input
-                className="input"
-                placeholder="Store name"
-                value={storeName}
-                onChange={(e) => setStoreName(e.target.value)}
-              />
-              <input
-                className="input"
-                placeholder="Address (optional)"
-                value={storeAddress}
-                onChange={(e) => setStoreAddress(e.target.value)}
-              />
-              <button className="button" onClick={addStore}>
-                Add Store
-              </button>
-            </div>
           </div>
 
-          <div className="card" style={{ marginTop: 20 }}>
-            <h2>All Stores</h2>
-
-            <input
-              className="input"
-              placeholder="Search by name or address…"
-              style={{ marginTop: 8, marginBottom: 12, maxWidth: 520 }}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-
-            {loading && <p className="small">Loading…</p>}
-
-            <ul className="list">
-              {filtered.map((s) => (
-                <li key={s.id}>
-                  {editingId === s.id ? (
-                    <>
-                      <input
-                        className="input"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                      />
-                      <input
-                        className="input"
-                        value={editAddress}
-                        onChange={(e) => setEditAddress(e.target.value)}
-                      />
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button className="button" onClick={() => saveEdit(s.id)}>
-                          Save
-                        </button>
-                        <button
-                          className="button danger"
-                          onClick={cancelEdit}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <h3>{s.name}</h3>
-                      <p className="small">{s.address}</p>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <Link to={`/store/${s.id}`} className="button">
-                          Open
-                        </Link>
-                        <button
-                          className="button"
-                          onClick={() => startEdit(s)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="button danger"
-                          onClick={() => deleteStore(s)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
+          {/* Small permanent regos (same card / same layout) */}
+          <div
+            style={{
+              textAlign: "right",
+              minWidth: 140,
+              padding: "6px 10px",
+              borderRadius: 10,
+              border: "1px solid var(--border)",
+              background: "#0f1626",
+            }}
+          >
+            <div className="small" style={{ fontWeight: 700, opacity: 0.9 }}>
+              UTE REGOS
+            </div>
+            <div style={{ fontSize: 12, lineHeight: 1.4, marginTop: 4, opacity: 0.9 }}>
+              {regosToShow.length ? (
+                regosToShow.map((r) => <div key={r}>{r}</div>)
+              ) : (
+                <div className="small">—</div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* RIGHT – COMPACT REGOS */}
-        <aside style={{ position: "sticky", top: 16 }}>
-          <div
-            className="card"
-            style={{ padding: "8px", fontSize: "11px" }}
-          >
-            <div className="small" style={{ fontWeight: 600 }}>
-              UTE
-            </div>
+        <div style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 12 }}>
+          <input
+            className="input"
+            placeholder="Store name"
+            value={storeName}
+            onChange={(e) => setStoreName(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="Address (optional)"
+            value={storeAddress}
+            onChange={(e) => setStoreAddress(e.target.value)}
+          />
+          <button className="button" onClick={addStore}>
+            Add Store
+          </button>
+        </div>
+      </div>
 
-            {UTE_REGOS.map(
-              (r, i) =>
-                r && (
-                  <div key={i} style={{ opacity: 0.85 }}>
-                    {r}
+      {/* List */}
+      <div className="card" style={{ marginTop: 20 }}>
+        <h2>All Stores</h2>
+        <input
+          className="input"
+          placeholder="Search by name or address…"
+          style={{ marginTop: 8, marginBottom: 12, maxWidth: 520 }}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+
+        {loading && <p className="small">Loading…</p>}
+        {filtered.length === 0 && !loading && <p className="small">No stores found.</p>}
+
+        <ul className="list">
+          {filtered.map((s) => (
+            <li key={s.id}>
+              {editingId === s.id ? (
+                <>
+                  <input
+                    className="input"
+                    placeholder="Store name"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    style={{ marginBottom: 8 }}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Address"
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                    style={{ marginBottom: 8 }}
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="button" onClick={() => saveEdit(s.id)} style={{ flex: 1 }}>
+                      Save
+                    </button>
+                    <button className="button danger" onClick={cancelEdit} style={{ flex: 1 }}>
+                      Cancel
+                    </button>
                   </div>
-                )
-            )}
-          </div>
-        </aside>
+                </>
+              ) : (
+                <>
+                  <h3 style={{ margin: "0 0 4px 0" }}>{s.name}</h3>
+                  <p className="small" style={{ marginBottom: 8 }}>
+                    {s.address}
+                  </p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Link
+                      to={`/store/${s.id}`}
+                      className="button"
+                      style={{ flex: 1, textAlign: "center" }}
+                    >
+                      Open
+                    </Link>
+                    <button className="button" onClick={() => startEdit(s)} style={{ flex: 1 }}>
+                      Edit
+                    </button>
+                    <button className="button danger" onClick={() => deleteStore(s)} style={{ flex: 1 }}>
+                      Delete
+                    </button>
+                  </div>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
