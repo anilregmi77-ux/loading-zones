@@ -5,12 +5,10 @@ import { supabase } from "../supabaseClient";
 export default function Home() {
   // =====================================
   // PERMANENT UTE REGOS (EDIT ANYTIME)
-  // Leave blanks to add more later
   // =====================================
   const UTE_REGOS = [
     "10S2DO",
     "EAE07D",
-    "", // add more regos here
     "", // add more regos here
     "", // add more regos here
   ];
@@ -22,7 +20,6 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // inline edit state
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editAddress, setEditAddress] = useState("");
@@ -54,10 +51,7 @@ export default function Home() {
       .select()
       .single();
 
-    if (error) {
-      console.error("addStore:", error);
-      return alert("Could not save store");
-    }
+    if (error) return alert("Could not save store");
 
     setStoreName("");
     setStoreAddress("");
@@ -72,52 +66,28 @@ export default function Home() {
 
   function cancelEdit() {
     setEditingId(null);
-    setEditName("");
-    setEditAddress("");
   }
 
   async function saveEdit(id) {
-    const name = editName.trim();
-    const address = editAddress.trim();
-    if (!name) return alert("Store name cannot be empty");
-
     const { error } = await supabase
       .from("stores")
-      .update({ name, address })
+      .update({ name: editName, address: editAddress })
       .eq("id", id);
 
-    if (error) {
-      console.error("saveEdit:", error);
-      return alert("Update failed");
-    }
+    if (error) return alert("Update failed");
 
     setStores((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, name, address } : s))
+      prev.map((s) =>
+        s.id === id ? { ...s, name: editName, address: editAddress } : s
+      )
     );
     cancelEdit();
   }
 
   async function deleteStore(s) {
-    if (!confirm(`Delete "${s.name}" and its photos?`)) return;
-
-    try {
-      const { data: files } = await supabase.storage
-        .from("store-photos")
-        .list(s.id, { limit: 1000 });
-
-      if (files?.length) {
-        const paths = files.map((f) => `${s.id}/${f.name}`);
-        await supabase.storage.from("store-photos").remove(paths);
-      }
-
-      const { error } = await supabase.from("stores").delete().eq("id", s.id);
-      if (error) throw error;
-
-      setStores((prev) => prev.filter((x) => x.id !== s.id));
-    } catch (e) {
-      console.error("deleteStore:", e);
-      alert("Delete failed");
-    }
+    if (!confirm(`Delete "${s.name}"?`)) return;
+    await supabase.from("stores").delete().eq("id", s.id);
+    setStores((prev) => prev.filter((x) => x.id !== s.id));
   }
 
   const filtered = stores.filter((s) => {
@@ -128,11 +98,11 @@ export default function Home() {
     );
   });
 
-  const regosToShow = UTE_REGOS.filter((r) => (r || "").trim().length > 0);
+  const regosToShow = UTE_REGOS.filter((r) => r && r.trim().length > 0);
 
   return (
     <div className="container">
-      {/* Add store */}
+      {/* TOP CARD */}
       <div className="card">
         <div
           style={{
@@ -143,37 +113,66 @@ export default function Home() {
             flexWrap: "wrap",
           }}
         >
+          {/* LEFT TITLE */}
           <div>
-            <h1 style={{ marginTop: 0 }}>🚚 Invidia's Driver Loading Zones</h1>
+            <h1 style={{ marginTop: 0 }}>
+              🚚 Invidia's Driver Loading Zones
+            </h1>
             <p className="small" style={{ marginTop: 6 }}>
               Add a store, then open it to manage notes & photos.
             </p>
           </div>
 
-          {/* Small permanent regos (same card / same layout) */}
+          {/* RIGHT REGO BOX (SAME CARD) */}
           <div
             style={{
               textAlign: "right",
-              minWidth: 140,
+              minWidth: 160,
               padding: "6px 10px",
               borderRadius: 10,
               border: "1px solid var(--border)",
               background: "#0f1626",
             }}
           >
-            <div className="small" style={{ fontWeight: 700, opacity: 0.9 }}>
+            <div
+              className="small"
+              style={{ fontWeight: 700, opacity: 0.9 }}
+            >
               UTE REGOS
             </div>
-            <div style={{ fontSize: 12, lineHeight: 1.4, marginTop: 4, opacity: 0.9 }}>
-              {regosToShow.length ? (
-                regosToShow.map((r) => <div key={r}>{r}</div>)
-              ) : (
-                <div className="small">—</div>
-              )}
+
+            <div
+              style={{
+                fontSize: 12,
+                lineHeight: 1.4,
+                marginTop: 4,
+                opacity: 0.9,
+              }}
+            >
+              {regosToShow.map((r) => (
+                <div key={r}>{r}</div>
+              ))}
             </div>
+
+            {/* UTE BOOKING LINK */}
+            <a
+              href="https://www.mobiledock.com/"
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "block",
+                marginTop: 6,
+                fontSize: 11,
+                color: "#4da3ff",
+                textDecoration: "none",
+              }}
+            >
+              UTE booking →
+            </a>
           </div>
         </div>
 
+        {/* ADD STORE */}
         <div style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 12 }}>
           <input
             className="input"
@@ -193,9 +192,10 @@ export default function Home() {
         </div>
       </div>
 
-      {/* List */}
+      {/* STORE LIST */}
       <div className="card" style={{ marginTop: 20 }}>
         <h2>All Stores</h2>
+
         <input
           className="input"
           placeholder="Search by name or address…"
@@ -205,7 +205,6 @@ export default function Home() {
         />
 
         {loading && <p className="small">Loading…</p>}
-        {filtered.length === 0 && !loading && <p className="small">No stores found.</p>}
 
         <ul className="list">
           {filtered.map((s) => (
@@ -214,45 +213,47 @@ export default function Home() {
                 <>
                   <input
                     className="input"
-                    placeholder="Store name"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    style={{ marginBottom: 8 }}
                   />
                   <input
                     className="input"
-                    placeholder="Address"
                     value={editAddress}
                     onChange={(e) => setEditAddress(e.target.value)}
-                    style={{ marginBottom: 8 }}
                   />
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button className="button" onClick={() => saveEdit(s.id)} style={{ flex: 1 }}>
+                    <button
+                      className="button"
+                      onClick={() => saveEdit(s.id)}
+                    >
                       Save
                     </button>
-                    <button className="button danger" onClick={cancelEdit} style={{ flex: 1 }}>
+                    <button
+                      className="button danger"
+                      onClick={cancelEdit}
+                    >
                       Cancel
                     </button>
                   </div>
                 </>
               ) : (
                 <>
-                  <h3 style={{ margin: "0 0 4px 0" }}>{s.name}</h3>
-                  <p className="small" style={{ marginBottom: 8 }}>
-                    {s.address}
-                  </p>
+                  <h3>{s.name}</h3>
+                  <p className="small">{s.address}</p>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <Link
-                      to={`/store/${s.id}`}
-                      className="button"
-                      style={{ flex: 1, textAlign: "center" }}
-                    >
+                    <Link to={`/store/${s.id}`} className="button">
                       Open
                     </Link>
-                    <button className="button" onClick={() => startEdit(s)} style={{ flex: 1 }}>
+                    <button
+                      className="button"
+                      onClick={() => startEdit(s)}
+                    >
                       Edit
                     </button>
-                    <button className="button danger" onClick={() => deleteStore(s)} style={{ flex: 1 }}>
+                    <button
+                      className="button danger"
+                      onClick={() => deleteStore(s)}
+                    >
                       Delete
                     </button>
                   </div>
