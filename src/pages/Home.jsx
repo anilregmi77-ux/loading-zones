@@ -3,16 +3,16 @@ import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 
 export default function Home() {
-  // =====================================
-  // PERMANENT UTE REGOS (EDIT ANYTIME)
-  // =====================================
+  // ===============================
+  // PERMANENT UTE REGOS
+  // ===============================
   const UTE_REGOS = [
     "10S2DO",
     "EAE07D",
-    "",        // ← add more regos here
-    "",        // ← add more regos here
+    "", // add more here
+    "", // add more here
   ];
-  // =====================================
+  // ===============================
 
   const [stores, setStores] = useState([]);
   const [storeName, setStoreName] = useState("");
@@ -20,19 +20,16 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // inline edit state
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editAddress, setEditAddress] = useState("");
 
   async function loadStores() {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("stores")
       .select("*")
       .order("created_at", { ascending: false });
-
-    if (error) console.error(error);
     setStores(data || []);
     setLoading(false);
   }
@@ -85,7 +82,6 @@ export default function Home() {
 
   async function deleteStore(s) {
     if (!confirm(`Delete "${s.name}"?`)) return;
-
     await supabase.from("stores").delete().eq("id", s.id);
     setStores((prev) => prev.filter((x) => x.id !== s.id));
   }
@@ -103,12 +99,12 @@ export default function Home() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 220px",
-          gap: 16,
+          gridTemplateColumns: "1fr 120px", // 👈 MUCH CLOSER
+          gap: 8,
           alignItems: "start",
         }}
       >
-        {/* LEFT – ORIGINAL CONTENT */}
+        {/* LEFT – MAIN CONTENT */}
         <div>
           <div className="card">
             <h1>🚚 Invidia's Driver Loading Zones</h1>
@@ -147,9 +143,6 @@ export default function Home() {
             />
 
             {loading && <p className="small">Loading…</p>}
-            {filtered.length === 0 && !loading && (
-              <p className="small">No stores found.</p>
-            )}
 
             <ul className="list">
               {filtered.map((s) => (
@@ -170,7 +163,10 @@ export default function Home() {
                         <button className="button" onClick={() => saveEdit(s.id)}>
                           Save
                         </button>
-                        <button className="button danger" onClick={cancelEdit}>
+                        <button
+                          className="button danger"
+                          onClick={cancelEdit}
+                        >
                           Cancel
                         </button>
                       </div>
@@ -204,31 +200,24 @@ export default function Home() {
           </div>
         </div>
 
-        {/* RIGHT – SMALL PERMANENT UTE REGOS */}
+        {/* RIGHT – COMPACT REGOS */}
         <aside style={{ position: "sticky", top: 16 }}>
-          <div className="card">
+          <div
+            className="card"
+            style={{ padding: "8px", fontSize: "11px" }}
+          >
             <div className="small" style={{ fontWeight: 600 }}>
-              UTE REGOS
+              UTE
             </div>
 
-            <ul
-              style={{
-                listStyle: "none",
-                padding: 0,
-                marginTop: 6,
-                fontSize: "12px",
-                lineHeight: "1.6",
-              }}
-            >
-              {UTE_REGOS.map(
-                (r, i) =>
-                  r && (
-                    <li key={i} style={{ opacity: 0.9 }}>
-                      • {r}
-                    </li>
-                  )
-              )}
-            </ul>
+            {UTE_REGOS.map(
+              (r, i) =>
+                r && (
+                  <div key={i} style={{ opacity: 0.85 }}>
+                    {r}
+                  </div>
+                )
+            )}
           </div>
         </aside>
       </div>
