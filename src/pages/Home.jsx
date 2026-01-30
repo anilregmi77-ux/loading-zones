@@ -7,10 +7,10 @@ export default function Home() {
   // PERMANENT UTE REGOS
   // ===============================
   const UTE_REGOS = [
-    "10S2DO",
-    "EAE07D",
-    "", // add more later
-    "",
+    "10S2DO (IZUZU)",
+    "EAE07D (HILUX)",
+    "XW42QY (6 pallet)", // add more later
+    "DC00JB (3 pallet)",
   ];
   // ===============================
 
@@ -145,7 +145,7 @@ export default function Home() {
             </div>
 
             <a
-              href="https://www.mobiledock.com/"
+              href="https://my.mobiledock.com/?redirect=/bookings"
               target="_blank"
               rel="noreferrer"
               style={{
