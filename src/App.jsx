@@ -9,7 +9,7 @@ export default function App() {
         <header className="topbar">
           <div>
             <strong>🚚 Invidia Loading Zones</strong>
-            <span>Blue/Green Driver Dashboard</span>
+            <span> .</span>
           </div>
         </header>
 

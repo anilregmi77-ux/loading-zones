@@ -519,35 +519,4 @@ a {
     height: 58px;
     font-size: 38px;
   }
-
-  .truck-icon {
-  display: inline-block;
-  cursor: pointer;
-  transform-origin: center;
 }
-
-.truck-icon:hover {
-  animation: truckHoverSpin 0.9s ease-in-out;
-}
-
-@keyframes truckHoverSpin {
-  0% {
-    transform: translateX(0) rotate(0deg) scale(1);
-  }
-
-  25% {
-    transform: translateX(8px) rotate(8deg) scale(1.08);
-  }
-
-  50% {
-    transform: translateX(14px) rotate(18deg) scale(1.12);
-  }
-
-  75% {
-    transform: translateX(6px) rotate(180deg) scale(1.08);
-  }
-
-  100% {
-    transform: translateX(0) rotate(360deg) scale(1);
-  }
-}}
