@@ -141,7 +141,7 @@ export default function Home() {
       <section className="hero-card">
         <div className="hero-main">
           <div className="eyebrow">Driver dashboard</div>
-          <h1>🚚 Invidia&apos;s Driver Loading Zones</h1>
+          <h1>🚚 Invidia&apos;s Drivers Loading Zones</h1>
           <p>
             Save loading instructions, photos, maps and driver notes in one
             fast mobile-friendly app.
