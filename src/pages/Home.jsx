@@ -4,7 +4,7 @@ import { supabase } from "../supabaseClient";
 
 export default function Home() {
   const UTE_REGOS = ["10S2DO", "XW42QY", "DC00JB"];
-  const UTE_BOOKING_URL = "https://www.mobiledock.com/";
+  const UTE_BOOKING_URL = "https://my.mobiledock.com/";
 
   const [stores, setStores] = useState([]);
   const [storeName, setStoreName] = useState("");
@@ -138,13 +138,56 @@ export default function Home() {
 
   return (
     <div className="container">
+      <style>
+        {`
+          .truck-icon {
+            display: inline-block;
+            cursor: pointer;
+            transform-origin: center;
+          }
+
+          .truck-icon:hover {
+            animation: truckHoverSpin 0.9s ease-in-out;
+          }
+
+          @keyframes truckHoverSpin {
+            0% {
+              transform: translateX(0) rotate(0deg) scale(1);
+            }
+
+            25% {
+              transform: translateX(8px) rotate(8deg) scale(1.08);
+            }
+
+            50% {
+              transform: translateX(14px) rotate(18deg) scale(1.12);
+            }
+
+            75% {
+              transform: translateX(6px) rotate(180deg) scale(1.08);
+            }
+
+            100% {
+              transform: translateX(0) rotate(360deg) scale(1);
+            }
+          }
+        `}
+      </style>
+
       <section className="hero-card">
         <div className="hero-main">
           <div className="eyebrow">Driver dashboard</div>
-          <h1>🚚 Invidia&apos;s Drivers Loading Zones</h1>
+
+          <h1>
+            <span className="truck-icon" title="Hover me">
+              🚚
+            </span>{" "}
+            Invidia Drivers Loading Zones Instructions
+          </h1>
+
           <p>
             Save loading instructions, photos, maps and driver notes in one
-            fast mobile-friendly app.
+            Click.
           </p>
         </div>
 
