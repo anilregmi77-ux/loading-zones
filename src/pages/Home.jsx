@@ -1,18 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 
 export default function Home() {
-  // ===============================
-  // PERMANENT UTE REGOS
-  // ===============================
-  const UTE_REGOS = [
-    "10S2DO (IZUZU)",
-    "EAE07D (HILUX)",
-    "XW42QY (6 pallet)", // add more later
-    "DC00JB (3 pallet)",
-  ];
-  // ===============================
+  const UTE_REGOS = ["10S2DO", "XW42QY", "DC00JB"];
+  const UTE_BOOKING_URL = "https://www.mobiledock.com/";
 
   const [stores, setStores] = useState([]);
   const [storeName, setStoreName] = useState("");
@@ -26,10 +18,17 @@ export default function Home() {
 
   async function loadStores() {
     setLoading(true);
-    const { data } = await supabase
+
+    const { data, error } = await supabase
       .from("stores")
       .select("*")
       .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("loadStores:", error);
+      alert("Could not load stores");
+    }
+
     setStores(data || []);
     setLoading(false);
   }
@@ -39,207 +38,258 @@ export default function Home() {
   }, []);
 
   async function addStore() {
-    if (!storeName.trim()) return alert("Enter store name");
+    const name = storeName.trim();
+    const address = storeAddress.trim();
+
+    if (!name) return alert("Enter a store name");
 
     const { data, error } = await supabase
       .from("stores")
-      .insert([{ name: storeName.trim(), address: storeAddress.trim() }])
+      .insert([{ name, address }])
       .select()
       .single();
 
-    if (error) return alert("Could not save store");
+    if (error) {
+      console.error("addStore:", error);
+      return alert("Could not save store");
+    }
 
     setStores((prev) => [data, ...prev]);
     setStoreName("");
     setStoreAddress("");
   }
 
-  function startEdit(s) {
-    setEditingId(s.id);
-    setEditName(s.name || "");
-    setEditAddress(s.address || "");
+  function startEdit(store) {
+    setEditingId(store.id);
+    setEditName(store.name || "");
+    setEditAddress(store.address || "");
   }
 
   function cancelEdit() {
     setEditingId(null);
+    setEditName("");
+    setEditAddress("");
   }
 
   async function saveEdit(id) {
+    const name = editName.trim();
+    const address = editAddress.trim();
+
+    if (!name) return alert("Store name cannot be empty");
+
     const { error } = await supabase
       .from("stores")
-      .update({ name: editName, address: editAddress })
+      .update({ name, address })
       .eq("id", id);
 
-    if (error) return alert("Update failed");
+    if (error) {
+      console.error("saveEdit:", error);
+      return alert("Update failed");
+    }
 
     setStores((prev) =>
-      prev.map((s) =>
-        s.id === id ? { ...s, name: editName, address: editAddress } : s
-      )
+      prev.map((s) => (s.id === id ? { ...s, name, address } : s))
     );
+
     cancelEdit();
   }
 
-  async function deleteStore(s) {
-    if (!confirm(`Delete "${s.name}"?`)) return;
-    await supabase.from("stores").delete().eq("id", s.id);
-    setStores((prev) => prev.filter((x) => x.id !== s.id));
+  async function deleteStore(store) {
+    if (!confirm(`Delete "${store.name}" and its photos?`)) return;
+
+    try {
+      const { data: files } = await supabase.storage
+        .from("store-photos")
+        .list(store.id, { limit: 1000 });
+
+      if (files?.length) {
+        const paths = files.map((file) => `${store.id}/${file.name}`);
+        await supabase.storage.from("store-photos").remove(paths);
+      }
+
+      const { error } = await supabase
+        .from("stores")
+        .delete()
+        .eq("id", store.id);
+
+      if (error) throw error;
+
+      setStores((prev) => prev.filter((s) => s.id !== store.id));
+    } catch (err) {
+      console.error("deleteStore:", err);
+      alert("Delete failed");
+    }
   }
 
-  const filtered = stores.filter((s) => {
-    const t = searchTerm.toLowerCase();
-    return (
-      s.name?.toLowerCase().includes(t) ||
-      (s.address || "").toLowerCase().includes(t)
-    );
-  });
+  const filteredStores = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
 
-  const regosToShow = UTE_REGOS.filter((r) => r && r.trim());
+    if (!term) return stores;
+
+    return stores.filter((store) => {
+      return (
+        store.name?.toLowerCase().includes(term) ||
+        store.address?.toLowerCase().includes(term)
+      );
+    });
+  }, [stores, searchTerm]);
+
+  const visibleRegos = UTE_REGOS.filter((rego) => rego.trim());
 
   return (
     <div className="container">
-      {/* TOP CARD */}
-      <div className="card">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-          }}
-        >
-          {/* TITLE */}
-          <div>
-            <h1 style={{ marginTop: 0 }}>
-              🚚 Invidia&apos;s Driver Loading Zones
-            </h1>
-            <p className="small" style={{ marginTop: 6 }}>
-              Add a store, then open it to manage notes & photos.
-            </p>
-          </div>
-
-          {/* ANIMATED REGO BOX */}
-          <div
-            style={{
-              minWidth: 160,
-              padding: "8px 12px",
-              borderRadius: 12,
-              border: "1px solid var(--border)",
-              background: "#0f1626",
-              animation:
-                "slideIn 600ms ease-out, pulseGlow 3s ease-in-out infinite",
-            }}
-          >
-            <div
-              className="small"
-              style={{ fontWeight: 700, marginBottom: 4 }}
-            >
-              UTE REGOS
-            </div>
-
-            <div style={{ fontSize: 12, lineHeight: 1.4 }}>
-              {regosToShow.map((r) => (
-                <div key={r}>{r}</div>
-              ))}
-            </div>
-
-            <a
-              href="https://my.mobiledock.com/?redirect=/bookings"
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: "block",
-                marginTop: 6,
-                fontSize: 11,
-                color: "#4da3ff",
-                textDecoration: "none",
-              }}
-            >
-              UTE booking →
-            </a>
-          </div>
+      <section className="hero-card">
+        <div className="hero-main">
+          <div className="eyebrow">Driver dashboard</div>
+          <h1>🚚 Invidia&apos;s Driver Loading Zones</h1>
+          <p>
+            Save loading instructions, photos, maps and driver notes in one
+            fast mobile-friendly app.
+          </p>
         </div>
 
-        {/* ADD STORE */}
-        <div style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 12 }}>
+        <div className="rego-box">
+          <div className="rego-title">UTE REGOS</div>
+
+          <div className="rego-list">
+            {visibleRegos.map((rego) => (
+              <span key={rego}>{rego}</span>
+            ))}
+          </div>
+
+          <a
+            href={UTE_BOOKING_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="rego-link"
+          >
+            UTE booking →
+          </a>
+        </div>
+      </section>
+
+      <section className="stats-grid one-stat">
+        <div className="stat-card">
+          <span>Total Stores</span>
+          <strong>{stores.length}</strong>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Add Store</h2>
+
+        <div className="form-grid">
           <input
             className="input"
             placeholder="Store name"
             value={storeName}
             onChange={(e) => setStoreName(e.target.value)}
           />
+
           <input
             className="input"
-            placeholder="Address (optional)"
+            placeholder="Address optional"
             value={storeAddress}
             onChange={(e) => setStoreAddress(e.target.value)}
           />
+
           <button className="button" onClick={addStore}>
             Add Store
           </button>
         </div>
-      </div>
+      </section>
 
-      {/* STORE LIST */}
-      <div className="card" style={{ marginTop: 20 }}>
-        <h2>All Stores</h2>
+      <section className="card">
+        <div className="section-header">
+          <div>
+            <h2>All Stores</h2>
+            <p className="muted">Search, open, edit or delete loading zones.</p>
+          </div>
+        </div>
 
         <input
-          className="input"
-          placeholder="Search by name or address…"
-          style={{ marginTop: 8, marginBottom: 12, maxWidth: 520 }}
+          className="input search-input"
+          placeholder="Search by name or address..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
 
-        {loading && <p className="small">Loading…</p>}
+        {loading && <TruckLoader text="Loading stores..." />}
 
-        <ul className="list">
-          {filtered.map((s) => (
-            <li key={s.id}>
-              <h3>{s.name}</h3>
-              <p className="small">{s.address}</p>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Link to={`/store/${s.id}`} className="button">
-                  Open
-                </Link>
-                <button
-                  className="button danger"
-                  onClick={() => deleteStore(s)}
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
+        {!loading && filteredStores.length === 0 && (
+          <div className="empty-box">No stores found.</div>
+        )}
+
+        <div className="store-grid">
+          {filteredStores.map((store) => (
+            <article className="store-card" key={store.id}>
+              {editingId === store.id ? (
+                <div className="form-stack">
+                  <input
+                    className="input"
+                    placeholder="Store name"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                  />
+
+                  <input
+                    className="input"
+                    placeholder="Address"
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                  />
+
+                  <div className="button-row">
+                    <button className="button" onClick={() => saveEdit(store.id)}>
+                      Save
+                    </button>
+
+                    <button className="button danger" onClick={cancelEdit}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h3>{store.name}</h3>
+                  <p className="muted">{store.address || "No address added"}</p>
+
+                  <div className="button-row">
+                    <Link className="button" to={`/store/${store.id}`}>
+                      Open
+                    </Link>
+
+                    <button
+                      className="button secondary"
+                      onClick={() => startEdit(store)}
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      className="button danger"
+                      onClick={() => deleteStore(store)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </>
+              )}
+            </article>
           ))}
-        </ul>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TruckLoader({ text }) {
+  return (
+    <div className="truck-loader-wrap">
+      <div className="truck-road">
+        <div className="truck">🚚</div>
       </div>
-
-      {/* KEYFRAME STYLES */}
-      <style>
-        {`
-          @keyframes slideIn {
-            from {
-              opacity: 0;
-              transform: translateY(-8px);
-            }
-            to {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
-
-          @keyframes pulseGlow {
-            0%, 100% {
-              box-shadow: 0 0 0 rgba(77,163,255,0);
-            }
-            50% {
-              box-shadow: 0 0 12px rgba(77,163,255,0.25);
-            }
-          }
-        `}
-      </style>
+      <p>{text}</p>
     </div>
   );
 }

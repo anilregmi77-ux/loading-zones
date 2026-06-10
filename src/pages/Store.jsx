@@ -7,33 +7,42 @@ export default function Store() {
 
   const [store, setStore] = useState(null);
   const [notes, setNotes] = useState("");
-  const [isEditingHeader, setIsEditingHeader] = useState(false);
+  const [photos, setPhotos] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [savingNotes, setSavingNotes] = useState(false);
+
+  const [editingHeader, setEditingHeader] = useState(false);
   const [editName, setEditName] = useState("");
   const [editAddress, setEditAddress] = useState("");
 
-  const [photos, setPhotos] = useState([]);
-  const [uploading, setUploading] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [touchStartX, setTouchStartX] = useState(null);
 
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
-  // Full-screen viewer state
-  const [fullScreenPhoto, setFullScreenPhoto] = useState(null);
+  const placeQuery = encodeURIComponent(
+    (store?.address || store?.name || "").trim()
+  );
 
-  function placeQuery() {
-    return encodeURIComponent((store?.address || store?.name || "").trim());
-  }
-  const urlGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${placeQuery()}`;
-  const urlAppleMaps = `https://maps.apple.com/?q=${placeQuery()}`;
-  const urlWaze = `https://waze.com/ul?q=${placeQuery()}&navigate=yes`;
+  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${placeQuery}`;
+  const appleMapsUrl = `https://maps.apple.com/?q=${placeQuery}`;
+  const wazeUrl = `https://waze.com/ul?q=${placeQuery}&navigate=yes`;
 
   async function loadStore() {
-    const { data, error } = await supabase.from("stores").select("*").eq("id", id).single();
+    const { data, error } = await supabase
+      .from("stores")
+      .select("*")
+      .eq("id", id)
+      .single();
+
     if (error) {
-      console.error(error);
+      console.error("loadStore:", error);
       alert("Could not load store");
       return;
     }
+
     setStore(data);
     setNotes(data.notes || "");
     setEditName(data.name || "");
@@ -46,11 +55,13 @@ export default function Store() {
       .select("*")
       .eq("store_id", id)
       .order("created_at", { ascending: false });
+
     if (error) {
-      console.error(error);
+      console.error("loadPhotos:", error);
       alert("Could not load photos");
       return;
     }
+
     setPhotos(data || []);
   }
 
@@ -59,115 +70,172 @@ export default function Store() {
     loadPhotos();
   }, [id]);
 
-  function startHeaderEdit() {
-    setEditName(store?.name || "");
-    setEditAddress(store?.address || "");
-    setIsEditingHeader(true);
+  useEffect(() => {
+    function handleKey(e) {
+      if (!viewerOpen) return;
+
+      if (e.key === "ArrowRight") nextPhoto();
+      if (e.key === "ArrowLeft") prevPhoto();
+      if (e.key === "Escape") setViewerOpen(false);
+    }
+
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [viewerOpen, currentPhotoIndex, photos]);
+
+  function openViewer(index) {
+    setCurrentPhotoIndex(index);
+    setViewerOpen(true);
   }
 
-  function cancelHeaderEdit() {
-    setIsEditingHeader(false);
-    setEditName(store?.name || "");
-    setEditAddress(store?.address || "");
+  function nextPhoto() {
+    setCurrentPhotoIndex((prev) =>
+      photos.length ? (prev + 1) % photos.length : 0
+    );
+  }
+
+  function prevPhoto() {
+    setCurrentPhotoIndex((prev) =>
+      photos.length ? (prev - 1 + photos.length) % photos.length : 0
+    );
+  }
+
+  function handleTouchEnd(e) {
+    if (touchStartX === null) return;
+
+    const diff = touchStartX - e.changedTouches[0].clientX;
+
+    if (diff > 50) nextPhoto();
+    if (diff < -50) prevPhoto();
+
+    setTouchStartX(null);
   }
 
   async function saveHeaderEdit() {
     const name = editName.trim();
     const address = editAddress.trim();
-    if (!name) return alert("Store name cannot be empty");
-    try {
-      const { error } = await supabase.from("stores").update({ name, address }).eq("id", id);
-      if (error) throw error;
 
-      setStore((prev) => (prev ? { ...prev, name, address } : prev));
-      setIsEditingHeader(false);
-      alert("Store updated");
-    } catch (e) {
-      console.error(e);
-      alert("Update failed");
+    if (!name) return alert("Store name cannot be empty");
+
+    const { error } = await supabase
+      .from("stores")
+      .update({ name, address })
+      .eq("id", id);
+
+    if (error) {
+      console.error("saveHeaderEdit:", error);
+      return alert("Update failed");
     }
+
+    setStore((prev) => ({ ...prev, name, address }));
+    setEditingHeader(false);
   }
 
   async function saveNotes() {
-    const { error } = await supabase.from("stores").update({ notes }).eq("id", id);
+    setSavingNotes(true);
+
+    const { error } = await supabase
+      .from("stores")
+      .update({ notes })
+      .eq("id", id);
+
+    setSavingNotes(false);
+
     if (error) {
-      console.error(error);
-      alert("Could not save notes");
-      return;
+      console.error("saveNotes:", error);
+      return alert("Could not save notes");
     }
-    alert("Notes saved!");
+
+    alert("Notes saved");
   }
 
   async function handleFiles(fileList) {
-    if (!fileList || fileList.length === 0) return;
+    if (!fileList?.length) return;
+
     setUploading(true);
+
     try {
       for (const file of fileList) {
         const fileName = `${Date.now()}_${file.name}`;
         const path = `${id}/${fileName}`;
+
         const { error: uploadError } = await supabase.storage
           .from("store-photos")
-          .upload(path, file, { cacheControl: "3600", upsert: false });
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
         if (uploadError) throw uploadError;
 
-        const { data: publicUrlData } = supabase.storage.from("store-photos").getPublicUrl(path);
-        const url = publicUrlData.publicUrl;
+        const { data: publicUrlData } = supabase.storage
+          .from("store-photos")
+          .getPublicUrl(path);
 
-        const { error: insertError } = await supabase
-          .from("photos")
-          .insert({ store_id: id, url, storage_path: path });
+        const { error: insertError } = await supabase.from("photos").insert({
+          store_id: id,
+          url: publicUrlData.publicUrl,
+          storage_path: path,
+        });
+
         if (insertError) throw insertError;
       }
+
       await loadPhotos();
     } catch (err) {
-      console.error(err);
+      console.error("handleFiles:", err);
       alert("Upload failed");
     } finally {
       setUploading(false);
+
       if (cameraInputRef.current) cameraInputRef.current.value = "";
       if (galleryInputRef.current) galleryInputRef.current.value = "";
     }
   }
 
-  function onCameraChange(e) {
-    handleFiles(e.target.files);
-  }
-
-  function onGalleryChange(e) {
-    handleFiles(e.target.files);
-  }
-
   async function removePhoto(photo) {
     if (!confirm("Delete this photo?")) return;
+
     try {
-      const { error: storageErr } = await supabase.storage
+      const { error: storageError } = await supabase.storage
         .from("store-photos")
         .remove([photo.storage_path]);
-      if (storageErr) throw storageErr;
 
-      const { error: dbErr } = await supabase.from("photos").delete().eq("id", photo.id);
-      if (dbErr) throw dbErr;
+      if (storageError) throw storageError;
+
+      const { error: dbError } = await supabase
+        .from("photos")
+        .delete()
+        .eq("id", photo.id);
+
+      if (dbError) throw dbError;
 
       setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error("removePhoto:", err);
       alert("Delete failed");
     }
   }
 
   async function deleteThisStore() {
     if (!confirm(`Delete "${store.name}" and all its photos?`)) return;
+
     try {
-      const { data: files } = await supabase.storage.from("store-photos").list(id, { limit: 1000 });
+      const { data: files } = await supabase.storage
+        .from("store-photos")
+        .list(id, { limit: 1000 });
+
       if (files?.length) {
-        const paths = files.map((f) => `${id}/${f.name}`);
+        const paths = files.map((file) => `${id}/${file.name}`);
         await supabase.storage.from("store-photos").remove(paths);
       }
+
       const { error } = await supabase.from("stores").delete().eq("id", id);
       if (error) throw error;
+
       window.location.href = "/";
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error("deleteThisStore:", err);
       alert("Delete store failed");
     }
   }
@@ -175,123 +243,212 @@ export default function Store() {
   if (!store) {
     return (
       <div className="container">
-        <div className="card"><p>Loading…</p></div>
+        <TruckLoader text="Loading store..." />
       </div>
     );
   }
 
+  const currentPhoto = photos[currentPhotoIndex];
+
   return (
     <div className="container">
-      {/* Header */}
-      <div className="card" style={{ display: "grid", gap: 8 }}>
-        <Link to="/" className="small">← Back</Link>
-        {!isEditingHeader ? (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+      <Link to="/" className="back-link">
+        ← Back to stores
+      </Link>
+
+      <section className="hero-card store-hero">
+        {!editingHeader ? (
+          <>
             <div>
-              <h1 style={{ margin: "6px 0 4px" }}>{store.name}</h1>
-              <div className="small">{store.address}</div>
+              <div className="eyebrow">Store details</div>
+              <h1>{store.name}</h1>
+              <p>{store.address || "No address added"}</p>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="button" onClick={startHeaderEdit}>Edit</button>
-              <button className="button danger" onClick={deleteThisStore}>Delete store</button>
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 8 }}>
-            <input className="input" placeholder="Store name" value={editName} onChange={(e) => setEditName(e.target.value)} />
-            <input className="input" placeholder="Address" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} />
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="button" onClick={saveHeaderEdit}>Save</button>
-              <button className="button danger" onClick={cancelHeaderEdit}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
 
-      {/* Map */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="small" style={{ marginBottom: 8 }}>Map</div>
-        <iframe
-          title="map"
-          width="100%"
-          height="260"
-          style={{ border: 0 }}
-          loading="lazy"
-          allowFullScreen
-          src={`https://www.google.com/maps?q=${encodeURIComponent(store.address || store.name)}&output=embed`}
-        />
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-          <a className="button" href={urlGoogleMaps} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center" }}>Open in Google Maps</a>
-          <a className="button" href={urlAppleMaps} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center" }}>Open in Apple Maps</a>
-          <a className="button" href={urlWaze} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: "center" }}>Open in Waze</a>
-        </div>
-      </div>
+            <div className="button-row">
+              <button
+                className="button secondary"
+                onClick={() => setEditingHeader(true)}
+              >
+                Edit
+              </button>
 
-      {/* Notes */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <h2>Notes</h2>
-        <textarea className="input" rows={6} placeholder="Write loading zone instructions here…" value={notes} onChange={(e) => setNotes(e.target.value)} style={{ width: "100%", marginTop: 8 }} />
-        <button className="button" onClick={saveNotes} style={{ marginTop: 10 }}>Save notes</button>
-      </div>
-
-      {/* Photos */}
-      <div className="card" style={{ marginTop: 16 }}>
-        <h2>Photos</h2>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-          <button className="button" onClick={() => cameraInputRef.current?.click()} style={{ flex: 1 }}>📷 Take Photo</button>
-          <button className="button" onClick={() => galleryInputRef.current?.click()} style={{ flex: 1 }}>🖼️ Choose from Gallery</button>
-        </div>
-
-        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={onCameraChange} disabled={uploading} style={{ display: "none" }} />
-        <input ref={galleryInputRef} type="file" accept="image/*" multiple onChange={onGalleryChange} disabled={uploading} style={{ display: "none" }} />
-
-        {uploading && <p className="small" style={{ marginTop: 8 }}>Uploading… please wait</p>}
-
-        <div className="grid" style={{ marginTop: 12 }}>
-          {photos.map((p) => (
-            <div key={p.id} className="card" style={{ padding: 8 }}>
-              <img
-                src={p.url}
-                alt="Store"
-                className="img"
-                style={{ cursor: "pointer", borderRadius: "8px" }}
-                onClick={() => setFullScreenPhoto(p.url)}
-              />
-              <button onClick={() => removePhoto(p)} className="button danger" style={{ marginTop: 8, width: "100%" }}>
+              <button className="button danger" onClick={deleteThisStore}>
                 Delete
               </button>
             </div>
-          ))}
-          {photos.length === 0 && <p className="small">No photos yet — add one above.</p>}
-        </div>
-      </div>
+          </>
+        ) : (
+          <div className="form-stack full-width">
+            <input
+              className="input"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
 
-      {/* Full-screen photo viewer */}
-      {fullScreenPhoto && (
+            <input
+              className="input"
+              value={editAddress}
+              onChange={(e) => setEditAddress(e.target.value)}
+            />
+
+            <div className="button-row">
+              <button className="button" onClick={saveHeaderEdit}>
+                Save
+              </button>
+
+              <button
+                className="button danger"
+                onClick={() => setEditingHeader(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Map</h2>
+
+        <iframe
+          title="map"
+          className="map-frame"
+          loading="lazy"
+          allowFullScreen
+          src={`https://www.google.com/maps?q=${encodeURIComponent(
+            store.address || store.name
+          )}&output=embed`}
+        />
+
+        <div className="button-row wrap">
+          <a className="button" href={googleMapsUrl} target="_blank" rel="noreferrer">
+            Google Maps
+          </a>
+
+          <a className="button" href={appleMapsUrl} target="_blank" rel="noreferrer">
+            Apple Maps
+          </a>
+
+          <a className="button" href={wazeUrl} target="_blank" rel="noreferrer">
+            Waze
+          </a>
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Loading Notes</h2>
+
+        <textarea
+          className="input textarea"
+          placeholder="Write loading zone instructions here..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+
+        <button className="button" onClick={saveNotes} disabled={savingNotes}>
+          {savingNotes ? "Saving..." : "Save Notes"}
+        </button>
+      </section>
+
+      <section className="card">
+        <h2>Photos</h2>
+
+        <div className="button-row wrap">
+          <button className="button" onClick={() => cameraInputRef.current?.click()}>
+            📷 Take Photo
+          </button>
+
+          <button
+            className="button secondary"
+            onClick={() => galleryInputRef.current?.click()}
+          >
+            🖼️ Choose Gallery
+          </button>
+        </div>
+
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={(e) => handleFiles(e.target.files)}
+          disabled={uploading}
+          hidden
+        />
+
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => handleFiles(e.target.files)}
+          disabled={uploading}
+          hidden
+        />
+
+        {uploading && <TruckLoader text="Uploading photos..." />}
+
+        {photos.length === 0 ? (
+          <div className="empty-box">No photos yet.</div>
+        ) : (
+          <div className="photo-grid">
+            {photos.map((photo, index) => (
+              <div className="photo-card" key={photo.id}>
+                <img
+                  src={photo.url}
+                  alt="Store"
+                  onClick={() => openViewer(index)}
+                />
+
+                <button
+                  className="button danger small-button"
+                  onClick={() => removePhoto(photo)}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {viewerOpen && currentPhoto && (
         <div
-          onClick={() => setFullScreenPhoto(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0,0,0,0.95)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 2000,
-          }}
+          className="photo-modal"
+          onTouchStart={(e) => setTouchStartX(e.touches[0].clientX)}
+          onTouchEnd={handleTouchEnd}
         >
-          <img
-            src={fullScreenPhoto}
-            alt="Fullscreen"
-            style={{
-              maxWidth: "90%",
-              maxHeight: "90%",
-              objectFit: "contain",
-              borderRadius: "12px",
-            }}
-          />
+          <button className="modal-close" onClick={() => setViewerOpen(false)}>
+            ×
+          </button>
+
+          <button className="modal-arrow left" onClick={prevPhoto}>
+            ‹
+          </button>
+
+          <img src={currentPhoto.url} alt="Fullscreen" />
+
+          <button className="modal-arrow right" onClick={nextPhoto}>
+            ›
+          </button>
+
+          <div className="modal-count">
+            {currentPhotoIndex + 1} / {photos.length}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function TruckLoader({ text }) {
+  return (
+    <div className="truck-loader-wrap">
+      <div className="truck-road">
+        <div className="truck">🚚</div>
+      </div>
+      <p>{text}</p>
     </div>
   );
 }
